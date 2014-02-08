@@ -1,0 +1,87 @@
+﻿{
+
+module Lexer
+
+open System
+// Opens methods related to fslex.exe
+open Microsoft.FSharp.Text.Lexing
+
+let newline (lexbuf: LexBuffer<_>) = 
+  lexbuf.StartPos <- lexbuf.StartPos.NextLine
+}
+
+// Regular expressions
+let symbol_prefix = '&'
+let tk_if = "if"
+let tk_then = "then"
+let tk_else = "else"
+let set = ":="
+let wait = "$"
+let semicomma = ";"
+let fun_keyword = "fun"
+let left_brace = "{"
+let square_open = "["
+let square_close = "]"
+let right_brace = "}"
+let arrow_right = "->"
+let pipe = "|"
+let whitespace = [' ' '\t' ]
+let newline = ('\r' '\n' | '\n' | '\r')
+let open_paren = '('
+let close_paren = ')'
+let letter = ( ['a'-'z'] | ['A'-'Z'] | '+' | '*' | '-' | '/' | '?' | '!' | '$' | '%' | 
+				'.' | ':' | '<' | '=' | '>' | '@' | '_' | '~' | '^')
+let digit = ( ['0'-'9'] )
+let alphanum = letter | digit
+let id = letter alphanum*
+let quote_char = '"'
+let notquote_char = [^'"']
+let comment_start = ';'
+let comment_block_start = "#|"
+let comment_block_end = "|#"
+let cons_false = ( "#F" | "#f" )
+let cons_true = ( "#T" | "#t" )
+
+rule tokenstream = parse
+// --------------------------
+| square_open								{ Parser.OPEN_SQUARE }
+| square_close								{ Parser.CLOSE_SQUARE }
+| tk_if										{ Parser.IF }
+| tk_then									{ Parser.THEN }
+| tk_else									{ Parser.ELSE }
+| set										{ Parser.SET }
+| semicomma									{ Parser.SEMICOMMA }
+| fun_keyword								{ Parser.FUNCTION }
+| open_paren								{ Parser.OPEN_PAREN }
+| close_paren								{ Parser.CLOSE_PAREN }
+| left_brace								{ Parser.LEFT_BRACE }
+| right_brace								{ Parser.RIGHT_BRACE }
+| pipe										{ Parser.PIPE }
+| arrow_right								{ Parser.ARROW_RIGHT }
+| cons_true									{ Parser.TRUE }
+| cons_false								{ Parser.FALSE }
+| ['-']?digit+								 { Parser.NUMBER(Double.Parse(LexBuffer.LexemeString lexbuf)) }
+| ['-']?digit+('.'digit+)?(['e''E']digit+)?  { Parser.NUMBER(Double.Parse(LexBuffer.LexemeString lexbuf)) }
+| symbol_prefix id							{ let str = LexBuffer.LexemeString lexbuf in Parser.SYMBOL(str.Substring(1)) }
+| id										 { Parser.IDENTIFIER(LexBuffer.LexemeString lexbuf) }
+| quote_char notquote_char* quote_char		 { let str = LexBuffer.LexemeString lexbuf in Parser.STRING(str.Substring(1, str.Length - 2)) }
+// --------------------------
+| comment_start	{ inside_comment lexbuf }
+| comment_block_start	{ inside_block lexbuf }
+// --------------------------
+| whitespace    { tokenstream lexbuf }
+| newline       { newline lexbuf; tokenstream lexbuf }
+// --------------------------
+| _             { failwith ("ParseError" + LexBuffer<_>.LexemeString lexbuf) }
+| eof           { Parser.EOF }
+
+and inside_comment = parse
+| newline       { newline lexbuf; tokenstream lexbuf }
+| _				{ inside_comment lexbuf }
+| eof           { Parser.EOF }
+
+and inside_block = parse
+| comment_block_end { tokenstream lexbuf }
+| _					{ inside_block lexbuf }
+// emit EOF if a block is not closed but the file ends
+| eof           { Parser.EOF }

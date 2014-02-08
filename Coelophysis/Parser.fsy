@@ -1,0 +1,114 @@
+﻿%{
+
+open AstObject
+
+%}
+
+// All tokens signaled with %start will become
+// functions in the parser object
+%start Start
+
+// Regular tokens
+%token < string > IDENTIFIER
+%token < string > STRING
+%token < char > CHAR
+%token < double > NUMBER
+%token PIPE
+%token SET
+%token TRUE
+%token FALSE
+%token < string > SYMBOL
+%token ARROW_RIGHT
+%token OPEN_PAREN
+%token CLOSE_PAREN
+%token OPEN_SQUARE
+%token CLOSE_SQUARE
+%token LEFT_BRACE
+%token RIGHT_BRACE
+%token FUNCTION
+%token SEMICOMMA
+%token IF
+%token THEN
+%token ELSE
+
+// Misc tokens
+%token EOF
+
+// This is the type of the data produced by a successful reduction of the 'start'
+// symbol:
+%type < AstObject.Ast > Start
+
+
+%%
+
+// These are the rules of the grammar along with the F# code of the 
+// actions executed as rules are reduced.  
+Start: TopExpressionLs EOF						{ Fork $1 }
+
+TopExpressionLs:
+	| TopExpression TopExpressionLs				{ $1 :: $2 }
+	| TopExpression								{ [$1] }
+
+TopExpression:
+	| PipedExpression SEMICOMMA					{ $1 }
+
+PipedExpression:
+	| ScalarExpressionOrApplication PIPE PipedExpression { Pipe($1, $3) }
+	| ScalarExpressionOrApplication						 { $1 }
+
+ScalarExpressionOrApplication:	
+	| Set									{ $1 }
+	| Application							{ $1 }
+	| ScalarExpression						{ $1 }
+
+Set:
+	| Id SET ScalarExpression		{ Set($1, $3) }
+
+List: 
+	| OPEN_SQUARE CLOSE_SQUARE						{ List [] }
+	| OPEN_SQUARE ScalarExpressionLs CLOSE_SQUARE	{ List $2 }
+
+ScalarExpressionLs:
+	| ScalarExpression ScalarExpressionLs			{ $1 :: $2 }
+	| ScalarExpression								{ [$1] }
+	
+ScalarExpression:
+	| ForkExpression							{ $1 }
+	| List										{ $1 }
+	| UnitValue									{ $1 }
+	| EnclosedPipedExpression					{ $1 }
+	| IfThenElse								{ $1 }
+	| FunctionLiteral							{ $1 }
+	| SYMBOL									{ Symbol $1 }
+	| STRING									{ Str $1 }
+	| CHAR										{ Char $1 }
+	| NUMBER									{ Double $1 }
+	| TRUE										{ Bool(true) }
+	| FALSE										{ Bool(false) }
+	| Id										{ $1 }
+
+ForkExpression:
+	| LEFT_BRACE TopExpressionLs RIGHT_BRACE	{ Fork $2 }
+
+UnitValue :
+	| OPEN_PAREN CLOSE_PAREN					{ Unit }
+
+EnclosedPipedExpression:
+	| OPEN_PAREN PipedExpression CLOSE_PAREN	{ $2 }
+
+IfThenElse:
+	| IF EnclosedPipedExpression THEN EnclosedPipedExpression ELSE EnclosedPipedExpression { IfThenElse($2, $4, $6) }
+	
+Application:
+	| Callable ScalarExpression				{ Application($1, $2) }
+
+Callable:
+	| FunctionLiteral						{ $1 }
+	| Id									{ $1 }
+
+FunctionLiteral:
+	| FUNCTION Id ARROW_RIGHT ScalarExpression { Function($2, $4) }
+
+Id:
+	| IDENTIFIER							{ Identifier $1 }
+
